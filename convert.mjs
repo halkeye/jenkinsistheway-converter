@@ -32,7 +32,7 @@ async function convertBody(body) {
 		p.stderr.on('data', (data) => stderr += data);
 		p.stderr.on('end', () => {
 			if (stderr.trim()) {
-				reject(stderr.trim());
+				// reject(stderr.trim());
 			}
 		});
 		let stdout = '';
@@ -79,14 +79,17 @@ for (const section of ['item']) {
 			delete data[key];
 		}
 		if (data['wp:postmeta']) {
-			data.frontmatter = {};
+			a.frontmatter = {};
 			for (const metadata of data['wp:postmeta']) {
-				data.frontmatter[metadata['wp:meta_key'][0]] = metadata['wp:meta_value'][0]
-				try {
-					const value = data.frontmatter[metadata['wp:meta_key'][0]];
-					value = unserialize(value)
-					data.frontmatter[metadata['wp:meta_key'][0]] = value;
-				} catch (e) {
+				const key = metadata['wp:meta_key'][0];
+				const value = metadata['wp:meta_value'][0]
+				a.frontmatter[key] = value;
+				if (value[1] === ":") {
+					try {
+						a.frontmatter[key] = unserialize(value);
+					} catch (e) {
+						console.log(a.post_id, e);
+					}
 				}
 			}
 			delete data['wp:postmeta'];
@@ -100,9 +103,6 @@ for (const section of ['item']) {
 		}
 		delete a["content:encoded"];
 		delete a["excerpt:encoded"];
-		if (!a.adoc) {
-			continue;
-		}
 
 		config[section.replace('wp:', '')].push(a)
 	}

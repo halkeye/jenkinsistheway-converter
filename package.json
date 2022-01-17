@@ -12,6 +12,7 @@
   "dependencies": {
     "js-yaml": "^4.1.0",
     "php-serialize": "^4.0.2",
+    "pluralize": "^8.0.0",
     "xml2js": "^0.4.23"
   }
 }

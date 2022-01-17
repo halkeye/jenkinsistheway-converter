@@ -5,9 +5,17 @@ import fs from 'fs/promises'
 import path from 'path';
 import https from 'https';
 import {promisify} from 'util';
+import Pluralize from 'pluralize';
+
+// from https://stackoverflow.com/a/2970667
+function camelize(str) {
+	return str.replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, function (match, index) {
+		if (+match === 0) return ""; // or if (/\s+/.test(match)) for white spaces
+		return index === 0 ? match.toLowerCase() : match.toUpperCase();
+	});
+}
 
 const finished = promisify(stream.finished);
-
 
 const rootDir = '../jenkins.io/content'
 const imagesDir = path.join(rootDir, 'images', 'jenkinsistheway')
@@ -86,16 +94,135 @@ for (const item of data.item) {
 		}
 		items[itemKey] = {
 			...(items[itemKey] || {}),
-			layout: 'simplepage',
+			layout: 'jenkinsistheway',
 			adoc: item.adoc,
 			title: item.title,
 			date: new Date(Date.parse(item.pubDate)).toISOString(),
 			post_name: item.post_name.trim(),
 		};
-		continue;
-	}
 
-	console.log(item.post_id, item.post_name, item.post_type);
+		// Fix a single "Program URL:" line which had an extra forced line break
+		// post_name == 'to-space'
+		items[itemKey].adoc = items[itemKey].adoc.replace(/\S*\+\n\n/, '\n\n');
+
+		// fix a random new line in to-cook-almost-everything-in-devops-world
+		items[itemKey].adoc = items[itemKey].adoc.replace(/,\s*Spoke with colleagues and peers/, ', Spoke with colleagues and peers')
+
+		// fix a random new line in to-truly-automate-everything
+		items[itemKey].adoc = items[itemKey].adoc.replace(/Kubernetes,\s*Linux/, 'Kubernetes, Linux')
+
+		//if (items[itemKey].post_name === 'to-make-better-recommendations') {
+		//  console.log(items[itemKey].adoc);
+		//}
+
+		let weAreDone = false;
+		items[itemKey].adoc = items[itemKey].adoc.split("\n").filter(line => {
+			if (weAreDone) {
+				// keep the remaining lines
+				return false;
+			}
+
+			let noFormattingLine = line.replace(/\*/g, '').replace(/_/g, '');
+
+			// multiline items will screw us up.
+			if (line.trim().endsWith('+')) {
+				// Allow C++ though
+				if (!line.trim().endsWith('C++')) {
+					if (line.includes('C+')) {
+						console.log('line', line);
+					}
+					return true; // we are keeping it
+				}
+			}
+
+			if (!items[itemKey].subTitle && line.startsWith('== ')) {
+				items[itemKey].subTitle = line.substring(3).trim();
+				return false;
+			}
+
+			if (!items[itemKey].submittedBy && line.toLowerCase().includes('submitted by jenkins user')) {
+				items[itemKey].submittedBy = line.replace(/_/g, '').substring('=== Submitted By Jenkins User'.length).trim()
+				return false;
+			}
+
+			if (!items[itemKey].tagLine && line.startsWith('==== ')) {
+				items[itemKey].tagLine = line.substring(6).trim().replace(/^\*/g, '').replace(/\*$/g, '')
+				return false;
+			}
+
+			if (!items[itemKey].image && line.startsWith('image:/images/jenkinsistheway/')) {
+				items[itemKey].image = line.substring(6).trim().replace(/\[.*/, '')
+				return false;
+			}
+
+			if (line.startsWith('=')) {
+				weAreDone = true;
+				return true; // we are keeping it
+			}
+
+			const fieldReplacements = {
+				"Project URL": "Project Website",
+				"Project website": "Project Website",
+				"Project": "Project Website",
+				"Program URL": "Project Website",
+
+				"KP Labs Team": "Team Members",
+				"Arm Teammates": "Team Members",
+				"IAM Robotics Team": "Team Members",
+				"Team": "Team Members",
+				"Team members": "Team Members",
+				"Team Member": "Team Members",
+				"Graylog team members": "Team Members",
+				"Telstra Team": "Team Members",
+				"Camunda Team Members": "Team Members",
+				"Moogsoft Team": "Team Members",
+
+				"Build Tools": "Build Tool",
+
+				"Version Control": "Version Control System",
+
+				"Project funding": "Project Funding",
+				"Funding": "Project Funding",
+				"Funded by": "Project Funding",
+			}
+			const singularFields = ['Organization', 'Company', 'Company website', 'Project Website', 'Summary', "Project Funding", "Funded By"]
+			const pluralFields = ['Industry', 'Programming Language', 'Platform', 'Version Control System', 'Build Tool', 'Community Support', 'Team Members', 'Team', 'Plugin']
+
+
+			let [header, ...remainder] = noFormattingLine.split(':')
+			remainder = remainder.join(':').trim();
+			if (fieldReplacements[header]) {
+				header = fieldReplacements[header];
+			}
+
+			if (singularFields.includes(header)) {
+				const key = camelize(header);
+				if (!items[itemKey][key]) {
+					items[itemKey][key] = remainder
+					return false;
+				}
+			}
+
+			if (pluralFields.includes(header)) {
+				const key = camelize(Pluralize(header));
+				const results = remainder.split(remainder.includes(';') ? ';' : ',').map(str => str.trim()).filter(Boolean)
+				if (!items[itemKey][key]) {
+					items[itemKey][key] = results
+					return false;
+				}
+			}
+
+			return true;
+		}).join("\n").replace(/\n\n\n/g, "\n")
+
+		items[itemKey].adoc = items[itemKey].adoc
+			.replace(/[\u2014]/g, "--")        // emdash
+			.replace(/[\u2022]/g, "*")         // bullet
+			.replace(/[\u2018\u2019]/g, "'")   // smart single quotes
+			.replace(/[\u201C\u201D]/g, '"');  // smart double quotes
+
+		items[itemKey].adoc = items[itemKey].adoc.split('\n').map(line => line.replace(/^\s*TIME Center CI\/CD solution\s*$/, '== TIME Center CI/CD solution')).join('\n')
+	}
 }
 
 
@@ -103,5 +230,9 @@ for (const [_, {adoc, ...item}] of Object.entries(items)) {
 	if (!adoc) {continue;}
 	await fs.mkdir(contentDir, {recursive: true})
 	const body = `---\n${YAML.dump(item)}---\n${adoc}`;
-	await fs.writeFile(path.join(contentDir, item.post_name + '.adoc'), body);
+	const filename = path.join(contentDir, item.post_name + '.adoc')
+	if (!adoc.trim().startsWith('==')) {
+		console.log(filename, body);
+	}
+	await fs.writeFile(filename, body);
 }

@@ -15,6 +15,30 @@ function camelize(str) {
 	});
 }
 
+function dontIndent(str) {
+	return ('' + str).replace(/^[ \t]+/mg, '');
+}
+
+function escapeRegExp(string) {
+	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+}
+
+function findNested(data, fn) {
+	for (const item of data) {
+		if (fn(item)) {
+			return item;
+		}
+		if (item.elements) {
+			const a = findNested(item.elements, fn)
+			if (a != null) {
+				return a;
+			}
+			continue;
+		}
+	}
+	return null;
+}
+
 const finished = promisify(stream.finished);
 
 const rootDir = '../jenkins.io/content'
@@ -92,6 +116,9 @@ for (const item of data.item) {
 			const filename = await downloadToFile(image.replace('image:', ''), path.join(imagesDir, path.basename(image.replace('image:', ''))));
 			item.adoc = item.adoc.replace(image, 'image:/images/jenkinsistheway/' + path.basename(filename));
 		}
+
+		const elementorData = JSON.parse(item.frontmatter._elementor_data);
+		const testimonal = findNested(elementorData, (item) => item.settings.testimonial_content);
 		items[itemKey] = {
 			...(items[itemKey] || {}),
 			layout: 'jenkinsistheway',
@@ -111,29 +138,18 @@ for (const item of data.item) {
 		// fix a random new line in to-truly-automate-everything
 		items[itemKey].adoc = items[itemKey].adoc.replace(/Kubernetes,\s*Linux/, 'Kubernetes, Linux')
 
-		//if (items[itemKey].post_name === 'to-make-better-recommendations') {
-		//  console.log(items[itemKey].adoc);
-		//}
+		if (item.post_name === 'to-improve-railway-signaling-solutions') {
+			console.log(items[itemKey].adoc.replace(/\b\+\n/, ''));
+		}
 
 		let weAreDone = false;
-		items[itemKey].adoc = items[itemKey].adoc.split("\n").filter(line => {
+		items[itemKey].adoc = items[itemKey].adoc.replace(/\+\n/, '').split("\n").filter(line => {
 			if (weAreDone) {
 				// keep the remaining lines
-				return false;
+				return true;
 			}
 
 			let noFormattingLine = line.replace(/\*/g, '').replace(/_/g, '');
-
-			// multiline items will screw us up.
-			if (line.trim().endsWith('+')) {
-				// Allow C++ though
-				if (!line.trim().endsWith('C++')) {
-					if (line.includes('C+')) {
-						console.log('line', line);
-					}
-					return true; // we are keeping it
-				}
-			}
 
 			if (!items[itemKey].subTitle && line.startsWith('== ')) {
 				items[itemKey].subTitle = line.substring(3).trim();
@@ -214,6 +230,28 @@ for (const item of data.item) {
 
 			return true;
 		}).join("\n").replace(/\n\n\n/g, "\n")
+
+		if (testimonal) {
+			const quoteRegex = new RegExp([
+				escapeRegExp(testimonal.settings.testimonial_content),
+				escapeRegExp("image:/images/jenkinsistheway/" + path.basename(testimonal.settings.testimonial_image.url)),
+				"\\[image,width=[0-9]+,height=[0-9]+\\]",
+				escapeRegExp(testimonal.settings.testimonial_name),
+				escapeRegExp(testimonal.settings.testimonial_job),
+			].join("\\s*"));
+			items[itemKey].adoc = items[itemKey].adoc.replace(quoteRegex, "\n\n" + dontIndent(`
+
+			[.testimonal]
+			[quote, "${testimonal.settings.testimonial_name}"]
+			${testimonal.settings.testimonial_content}
+			image:/images/jenkinsistheway/${path.basename(testimonal.settings.testimonial_image.url)}[image,width=200,height=200]
+			`) + "\n\n");
+
+		}
+
+		if (item.post_name === 'to-improve-railway-signaling-solutions') {
+			console.log(items[itemKey]);
+		}
 
 		items[itemKey].adoc = items[itemKey].adoc
 			.replace(/[\u2014]/g, "--")        // emdash

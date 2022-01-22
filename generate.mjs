@@ -138,10 +138,6 @@ for (const item of data.item) {
 		// fix a random new line in to-truly-automate-everything
 		items[itemKey].adoc = items[itemKey].adoc.replace(/Kubernetes,\s*Linux/, 'Kubernetes, Linux')
 
-		if (item.post_name === 'to-improve-railway-signaling-solutions') {
-			console.log(items[itemKey].adoc.replace(/\b\+\n/, ''));
-		}
-
 		let weAreDone = false;
 		items[itemKey].adoc = items[itemKey].adoc.replace(/\+\n/, '').split("\n").filter(line => {
 			if (weAreDone) {
@@ -234,7 +230,7 @@ for (const item of data.item) {
 
 		if (testimonal) {
 			const quoteRegex = new RegExp([
-				escapeRegExp(testimonal.settings.testimonial_content),
+				escapeRegExp(testimonal.settings.testimonial_content.replace(/<b>/g, '*').replace(/<\/b>/g, '*')),
 				escapeRegExp("image:/images/jenkinsistheway/" + path.basename(testimonal.settings.testimonial_image.url)),
 				"\\[image,width=[0-9]+,height=[0-9]+\\]",
 				escapeRegExp(testimonal.settings.testimonial_name),
@@ -244,15 +240,15 @@ for (const item of data.item) {
 
 			[.testimonal]
 			[quote, "${testimonal.settings.testimonial_name}"]
-			${testimonal.settings.testimonial_content}
+			${testimonal.settings.testimonial_content.replace(/<b>/g, '').replace(/<\/b>/g, '')}
 			image:/images/jenkinsistheway/${path.basename(testimonal.settings.testimonial_image.url)}[image,width=200,height=200]
 			`) + "\n\n");
 
+			if (item.post_name === 'to-simplify-things-for-devops-world') {
+				console.log(quoteRegex, items[itemKey]);
+			}
 		}
 
-		if (item.post_name === 'to-improve-railway-signaling-solutions') {
-			console.log(items[itemKey]);
-		}
 
 		items[itemKey].adoc = items[itemKey].adoc
 			.replace(/[\u2014]/g, "--")        // emdash

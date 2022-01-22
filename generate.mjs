@@ -230,21 +230,21 @@ for (const item of data.item) {
 
 		if (testimonal) {
 			const quoteRegex = new RegExp([
-				escapeRegExp(testimonal.settings.testimonial_content.replace(/<b>/g, '*').replace(/<\/b>/g, '*')),
-				escapeRegExp("image:/images/jenkinsistheway/" + path.basename(testimonal.settings.testimonial_image.url)),
+				escapeRegExp(testimonal.settings.testimonial_content.replace(/<b>/g, '*').replace(/<\/b>/g, '*').trim()),
+				escapeRegExp("image:/images/jenkinsistheway/" + path.basename(testimonal.settings.testimonial_image.url).trim()),
 				"\\[image,width=[0-9]+,height=[0-9]+\\]",
-				escapeRegExp(testimonal.settings.testimonial_name),
-				escapeRegExp(testimonal.settings.testimonial_job),
+				escapeRegExp(testimonal.settings.testimonial_name.trim()),
+				escapeRegExp(testimonal.settings.testimonial_job.trim()),
 			].join("\\s*"));
 			items[itemKey].adoc = items[itemKey].adoc.replace(quoteRegex, "\n\n" + dontIndent(`
 
 			[.testimonal]
-			[quote, "${testimonal.settings.testimonial_name}"]
-			${testimonal.settings.testimonial_content.replace(/<b>/g, '').replace(/<\/b>/g, '')}
+			[quote, "${testimonal.settings.testimonial_name.trim()}"]
+			${testimonal.settings.testimonial_content.trim().replace(/<b>/g, '').replace(/<\/b>/g, '')}
 			image:/images/jenkinsistheway/${path.basename(testimonal.settings.testimonial_image.url)}[image,width=200,height=200]
 			`) + "\n\n");
 
-			if (item.post_name === 'to-simplify-things-for-devops-world') {
+			if (item.post_name === 'to-cast-magic-of-continuous-delivery') {
 				console.log(quoteRegex, items[itemKey]);
 			}
 		}
@@ -267,7 +267,7 @@ for (const [_, {adoc, ...item}] of Object.entries(items)) {
 	const body = `---\n${YAML.dump(item)}---\n${adoc}`;
 	const filename = path.join(contentDir, item.post_name + '.adoc')
 	if (!adoc.trim().startsWith('==')) {
-		console.log(filename, body);
+		// console.log(filename, body);
 	}
 	await fs.writeFile(filename, body);
 }

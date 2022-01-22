@@ -205,8 +205,9 @@ for (const item of data.item) {
 			const pluralFields = ['Industry', 'Programming Language', 'Platform', 'Version Control System', 'Build Tool', 'Community Support', 'Team Members', 'Team', 'Plugin']
 
 
-			let [header, ...remainder] = noFormattingLine.split(':')
+			let [header, ...remainder] = noFormattingLine.trim().split(':')
 			remainder = remainder.join(':').trim();
+			header = header.trim();
 			if (fieldReplacements[header]) {
 				header = fieldReplacements[header];
 			}

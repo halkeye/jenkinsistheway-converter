@@ -20,7 +20,9 @@ function dontIndent(str) {
 }
 
 function escapeRegExp(string) {
-	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+	return string
+		.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // $& means the whole matched string
+		.replace(/\s+/g, '\\s+');
 }
 
 function findNested(data, fn) {

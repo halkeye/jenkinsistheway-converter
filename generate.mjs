@@ -8,10 +8,10 @@ import {promisify} from 'util';
 import Pluralize from 'pluralize';
 
 // from https://stackoverflow.com/a/2970667
-function camelize(str) {
+function keyize(str) {
 	return str.replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, function (match, index) {
 		if (+match === 0) return ""; // or if (/\s+/.test(match)) for white spaces
-		return index === 0 ? match.toLowerCase() : match.toUpperCase();
+		return index === 0 ? match.toLowerCase() : '_' + match.toLowerCase();
 	});
 }
 
@@ -147,18 +147,18 @@ for (const item of data.item) {
 
 			let noFormattingLine = line.replace(/\*/g, '').replace(/_/g, '');
 
-			if (!items[itemKey].subTitle && line.startsWith('== ')) {
-				items[itemKey].subTitle = line.substring(3).trim();
+			if (!items[itemKey].sub_title && line.startsWith('== ')) {
+				items[itemKey].sub_title = line.substring(3).trim();
 				return false;
 			}
 
-			if (!items[itemKey].submittedBy && line.toLowerCase().includes('submitted by jenkins user')) {
-				items[itemKey].submittedBy = line.replace(/_/g, '').substring('=== Submitted By Jenkins User'.length).trim()
+			if (!items[itemKey].submitted_by && line.toLowerCase().includes('submitted by jenkins user')) {
+				items[itemKey].submitted_by = line.replace(/_/g, '').substring('=== Submitted By Jenkins User'.length).trim()
 				return false;
 			}
 
-			if (!items[itemKey].tagLine && line.startsWith('==== ')) {
-				items[itemKey].tagLine = line.substring(6).trim().replace(/^\*/g, '').replace(/\*$/g, '')
+			if (!items[itemKey].tag_line && line.startsWith('==== ')) {
+				items[itemKey].tag_line = line.substring(6).trim().replace(/^\*/g, '').replace(/\*$/g, '')
 				return false;
 			}
 
@@ -209,7 +209,7 @@ for (const item of data.item) {
 			}
 
 			if (singularFields.includes(header)) {
-				const key = camelize(header);
+				const key = keyize(header);
 				if (!items[itemKey][key]) {
 					items[itemKey][key] = remainder
 					return false;
@@ -217,7 +217,7 @@ for (const item of data.item) {
 			}
 
 			if (pluralFields.includes(header)) {
-				const key = camelize(Pluralize(header));
+				const key = keyize(Pluralize(header));
 				const results = remainder.split(remainder.includes(';') ? ';' : ',').map(str => str.trim()).filter(Boolean)
 				if (!items[itemKey][key]) {
 					items[itemKey][key] = results
@@ -260,6 +260,11 @@ for (const item of data.item) {
 	}
 }
 
+for (const staticImage of ['https://jenkinsistheway.io/wp-content/uploads/2020/04/Jenkins-is-the-Way-768x911.png']) {
+	const filename = path.join(imagesDir, path.basename(staticImage));
+	await fs.mkdir(imagesDir, {recursive: true})
+	await downloadToFile(staticImage, filename);
+}
 
 for (const [_, {adoc, ...item}] of Object.entries(items)) {
 	if (!adoc) {continue;}

@@ -14,7 +14,7 @@ const QUOTE_MARKER = 'QUOTEQUOTEQUOTEQUOTEETOUQ'
 const finished = promisify(stream.finished);
 
 const rootDir = '../jenkins-is-the-way/src'
-const imagesDir = path.join(rootDir, 'images', 'user-story')
+const imagesDir = path.join(rootDir, 'images')
 const contentDir = path.join(rootDir, 'user-story')
 
 const data = await fs.readFile('./jenkinsistheway.json', 'utf8').then(str => JSON.parse(str));
@@ -82,18 +82,24 @@ for (const item of data.item) {
 			continue;
 		}
 		if (!item.adoc) {continue;}
+		const baseDir = path.join(contentDir, item.post_name)
+		await fs.mkdir(baseDir, {recursive: true})
+
 		const itemKey = item.post_name
 		const images = new Set(item.adoc.match(/image:https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Zá0-9()]{1,6}\b([-a-záA-Z0-9()@:%_\+.~#?&//=]*)/g))
 		for (const image of Array.from(images)) {
-			await fs.mkdir(imagesDir, {recursive: true})
 			try {
-				const filename = await downloadToFile(image.replace('image:', ''), path.join(imagesDir, path.basename(image.replace('image:', ''))));
-				item.adoc = item.adoc.replace(image, 'image:/images/user-story/' + path.basename(filename));
+				const filename = await downloadToFile(image.replace('image:', ''), path.join(baseDir, path.basename(image.replace('image:', ''))));
+				item.adoc = item.adoc.replace(image, 'image:./' + path.basename(filename));
 			} catch (e) {
 				console.error(e);
 				continue;
 			}
 		}
+
+		//if (item.post_name.trim() === 'tymit') {
+		//  console.log(item.adoc);
+		//}
 
 		const elementorData = JSON.parse(item.frontmatter._elementor_data);
 		const testimonal = findNested(elementorData, (item) => item.settings.testimonial_content);
@@ -116,6 +122,7 @@ for (const item of data.item) {
 
 		// fix a random new line in to-truly-automate-everything
 		items[itemKey].adoc = items[itemKey].adoc.replace(/Kubernetes,\s*Linux/, 'Kubernetes, Linux')
+
 
 		let weAreDone = false;
 		items[itemKey].adoc = items[itemKey].adoc.replace(/\+\n/, '').split("\n").filter(line => {
@@ -141,7 +148,7 @@ for (const item of data.item) {
 				return false;
 			}
 
-			if (!items[itemKey].image && line.startsWith('image:/images/user-story/')) {
+			if (!items[itemKey].image && line.startsWith('image:./')) {
 				items[itemKey].image = line.substring(6).trim().replace(/\[.*/, '')
 				return false;
 			}
@@ -211,7 +218,7 @@ for (const item of data.item) {
 		if (testimonal) {
 			const quoteRegex = new RegExp([
 				escapeRegExp(testimonal.settings.testimonial_content.replace(/<b>/g, '*').replace(/<\/b>/g, '*').trim()),
-				escapeRegExp("image:/images/user-story/" + path.basename(testimonal.settings.testimonial_image.url).trim()),
+				escapeRegExp("image:./" + path.basename(testimonal.settings.testimonial_image.url).trim()),
 				"\\[image,width=[0-9]+,height=[0-9]+\\]",
 				escapeRegExp(testimonal.settings.testimonial_name.trim()),
 				escapeRegExp(testimonal.settings.testimonial_job.trim()),
@@ -232,15 +239,17 @@ for (const item of data.item) {
 
 		items[itemKey].adoc = items[itemKey].adoc.split('\n').map(line => line.replace(/^\s*TIME Center CI\/CD solution\s*$/, '== TIME Center CI/CD solution')).join('\n')
 
-		items[itemKey].md = await convertAdocToMarkdown(items[itemKey].adoc).then(md => md.toString('utf8')).then(
+		items[itemKey].md = await convertAdocToMarkdown(items[itemKey].adoc/*.replace(/\bimage:([^\[]+)\[image,width=\d+,height=\d+]/g, 'image:$1')*/).then(md => md.toString('utf8')).then(
 			md => md.replace(QUOTE_MARKER, `<Testimonal from="${quote.from}" image="./${quote.image}">${quote.content}</Testimonal>`)
-		);
+		).then(
+			md => md.replace(/<span class="image">(.*)<\/span>/, '$1')
+		)
 
 		items[itemKey].adoc = items[itemKey].adoc.replace(QUOTE_MARKER, dontIndent(`
 			[.testimonal]
 			[quote, "${quote.from}"]
 			${quote.content}
-			image:/images/user-story/${quote.image}[image,width=200,height=200]
+			image:./${quote.image}[image,width=200,height=200]
 		`));
 	}
 }
@@ -256,6 +265,6 @@ for (const [_, {md, adoc, ...item}] of Object.entries(items)) {
 	await fs.mkdir(contentDir, {recursive: true})
 
 	const body = `---\n${YAML.dump(item)}---\n${md}`;
-	const filename = path.join(contentDir, item.post_name + '.mdx')
+	const filename = path.join(contentDir, item.post_name, 'index.mdx')
 	await fs.writeFile(filename, body);
 }

@@ -214,7 +214,6 @@ for (const item of data.item) {
 			return true;
 		}).join("\n").replace(/\n\n\n/g, "\n")
 
-		const quote = {}
 		if (testimonal) {
 			const quoteRegex = new RegExp([
 				escapeRegExp(testimonal.settings.testimonial_content.replace(/<b>/g, '*').replace(/<\/b>/g, '*').trim()),
@@ -224,9 +223,11 @@ for (const item of data.item) {
 				escapeRegExp(testimonal.settings.testimonial_job.trim()),
 			].join("\\s*"));
 
-			quote.from = testimonal.settings.testimonial_name.trim()
-			quote.content = testimonal.settings.testimonial_content.trim().replace(/<b>/g, '').replace(/<\/b>/g, '').replace('“', '"').replace('”', '"')
-			quote.image = path.basename(testimonal.settings.testimonial_image.url)
+			items[itemKey].quotes = [{
+				from: testimonal.settings.testimonial_name.trim(),
+				content: testimonal.settings.testimonial_content.trim().replace(/<b>/g, '').replace(/<\/b>/g, '').replace('“', '"').replace('”', '"'),
+				image: path.basename(testimonal.settings.testimonial_image.url),
+			}]
 
 			items[itemKey].adoc = items[itemKey].adoc.replace(quoteRegex, `\n\n${QUOTE_MARKER}\n\n`);
 		}
@@ -239,17 +240,18 @@ for (const item of data.item) {
 
 		items[itemKey].adoc = items[itemKey].adoc.split('\n').map(line => line.replace(/^\s*TIME Center CI\/CD solution\s*$/, '== TIME Center CI/CD solution')).join('\n')
 
-		items[itemKey].md = await convertAdocToMarkdown(items[itemKey].adoc/*.replace(/\bimage:([^\[]+)\[image,width=\d+,height=\d+]/g, 'image:$1')*/).then(md => md.toString('utf8')).then(
-			md => md.replace(QUOTE_MARKER, `<Testimonal from="${quote.from}" image="./${quote.image}">${quote.content}</Testimonal>`)
+		let counter = 0;
+		items[itemKey].md = await convertAdocToMarkdown(items[itemKey].adoc).then(md => md.toString('utf8')).then(
+			md => md.replace(QUOTE_MARKER, () => `<Testimonal idx="0" />`)
 		).then(
-			md => md.replace(/<span class="image">(.*)<\/span>/, '$1')
+			md => md.replace(/<span class="image">(.*)<\/span>/g, '$1')
 		)
 
-		items[itemKey].adoc = items[itemKey].adoc.replace(QUOTE_MARKER, dontIndent(`
+		items[itemKey].adoc = items[itemKey].adoc.replace(QUOTE_MARKER, () => dontIndent(`
 			[.testimonal]
-			[quote, "${quote.from}"]
-			${quote.content}
-			image:./${quote.image}[image,width=200,height=200]
+			[quote, "${items[itemKey].quotes[0].from}"]
+			${items[itemKey].quotes[0].content}
+			image:./${items[itemKey].quotes[0].image}[image,width=200,height=200]
 		`));
 	}
 }

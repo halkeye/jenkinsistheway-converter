@@ -9,6 +9,8 @@ import Pluralize from 'pluralize';
 
 import {keyize, dontIndent, escapeRegExp, findNested, convertAdocToMarkdown} from './utils.mjs';
 
+const QUOTE_MARKER = 'QUOTEQUOTEQUOTEQUOTEETOUQ'
+
 const finished = promisify(stream.finished);
 
 const rootDir = '../jenkins-is-the-way/src'
@@ -102,6 +104,8 @@ for (const item of data.item) {
 			date: new Date(Date.parse(item.pubDate)).toISOString(),
 			post_name: item.post_name.trim(),
 		};
+
+		items[itemKey].adoc = items[itemKey].adoc.replace(/\n\*Results:\s+\*/, '\n*Results:*')
 
 		// Fix a single "Program URL:" line which had an extra forced line break
 		// post_name == 'to-space'
@@ -203,6 +207,7 @@ for (const item of data.item) {
 			return true;
 		}).join("\n").replace(/\n\n\n/g, "\n")
 
+		const quote = {}
 		if (testimonal) {
 			const quoteRegex = new RegExp([
 				escapeRegExp(testimonal.settings.testimonial_content.replace(/<b>/g, '*').replace(/<\/b>/g, '*').trim()),
@@ -211,19 +216,13 @@ for (const item of data.item) {
 				escapeRegExp(testimonal.settings.testimonial_name.trim()),
 				escapeRegExp(testimonal.settings.testimonial_job.trim()),
 			].join("\\s*"));
-			items[itemKey].adoc = items[itemKey].adoc.replace(quoteRegex, "\n\n" + dontIndent(`
 
-			[.testimonal]
-			[quote, "${testimonal.settings.testimonial_name.trim()}"]
-			${testimonal.settings.testimonial_content.trim().replace(/<b>/g, '').replace(/<\/b>/g, '')}
-			image:/images/user-story/${path.basename(testimonal.settings.testimonial_image.url)}[image,width=200,height=200]
-			`) + "\n\n");
+			quote.from = testimonal.settings.testimonial_name.trim()
+			quote.content = testimonal.settings.testimonial_content.trim().replace(/<b>/g, '').replace(/<\/b>/g, '').replace('“', '"').replace('”', '"')
+			quote.image = path.basename(testimonal.settings.testimonial_image.url)
 
-			if (item.post_name === 'tymit') {
-				console.log(quoteRegex, items[itemKey]);
-			}
+			items[itemKey].adoc = items[itemKey].adoc.replace(quoteRegex, `\n\n${QUOTE_MARKER}\n\n`);
 		}
-
 
 		items[itemKey].adoc = items[itemKey].adoc
 			.replace(/[\u2014]/g, "--")        // emdash
@@ -232,6 +231,17 @@ for (const item of data.item) {
 			.replace(/[\u201C\u201D]/g, '"');  // smart double quotes
 
 		items[itemKey].adoc = items[itemKey].adoc.split('\n').map(line => line.replace(/^\s*TIME Center CI\/CD solution\s*$/, '== TIME Center CI/CD solution')).join('\n')
+
+		items[itemKey].md = await convertAdocToMarkdown(items[itemKey].adoc).then(md => md.toString('utf8')).then(
+			md => md.replace(QUOTE_MARKER, `<Testimonal from="${quote.from}" image="./${quote.image}">${quote.content}</Testimonal>`)
+		);
+
+		items[itemKey].adoc = items[itemKey].adoc.replace(QUOTE_MARKER, dontIndent(`
+			[.testimonal]
+			[quote, "${quote.from}"]
+			${quote.content}
+			image:/images/user-story/${quote.image}[image,width=200,height=200]
+		`));
 	}
 }
 
@@ -241,11 +251,10 @@ for (const staticImage of ['https://jenkinsistheway.io/wp-content/uploads/2020/0
 	await downloadToFile(staticImage, filename);
 }
 
-for (const [_, {adoc, ...item}] of Object.entries(items)) {
-	if (!adoc) {continue;}
+for (const [_, {md, adoc, ...item}] of Object.entries(items)) {
+	if (!md) {continue;}
 	await fs.mkdir(contentDir, {recursive: true})
 
-	const md = await convertAdocToMarkdown(adoc)
 	const body = `---\n${YAML.dump(item)}---\n${md}`;
 	const filename = path.join(contentDir, item.post_name + '.mdx')
 	await fs.writeFile(filename, body);

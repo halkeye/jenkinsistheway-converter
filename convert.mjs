@@ -1,50 +1,11 @@
 import {Parser} from 'xml2js';
 import {unserialize} from 'php-serialize'
-import {spawn} from 'child_process';
 import fs from 'fs/promises';
-
-async function convertBody(body) {
-	return new Promise(function (resolve, reject) {
-		const command = 'pandoc';
-		const args = [
-			'--wrap=none',
-			'-f',
-			'html',
-			'-t',
-			'asciidoc',
-			'--atx-headers',
-			'-o',
-			'-',
-			'-',
-		];
-		// console.log(`${command} ${args.map((a) => `"${a}"`).join(' ')}`);
-		const p = spawn(
-			command, args, {
-			encoding: 'utf8',
-			env: {...process.env, LANG: 'en_US.UTF-8', LC_CTYPE: 'en_US.UTF-8'},
-			stdio: ['pipe', 'pipe', 'pipe'],
-		},
-		);
-		p.once('error', reject);
-		p.once('exit', () => resolve({stderr, stdout, }));
-
-		let stderr = '';
-		p.stderr.on('data', (data) => stderr += data);
-		p.stderr.on('end', () => {
-			if (stderr.trim()) {
-				// reject(stderr.trim());
-			}
-		});
-		let stdout = '';
-		p.stdout.on('data', (data) => stdout += data);
-		p.stdin.write(body);
-		p.stdin.end();
-	});
-}
+import {convertHtmlToAdoc} from './utils.mjs';
 
 const parser = new Parser();
 const xml = await parser.parseStringPromise(
-	await fs.readFile("./jenkins.WordPress.2021-12-22.xml")
+	await fs.readFile("./jenkins.WordPress.2022-01-22.xml")
 );
 const config = {
 	author: [],
@@ -96,7 +57,7 @@ for (const section of ['item']) {
 		}
 		if (a['content:encoded']) {
 			try {
-				a.adoc = await convertBody(a['content:encoded']).then(({stdout}) => stdout);
+				a.adoc = await convertHtmlToAdoc(a['content:encoded']);
 			} catch (e) {
 				console.log(`error processing [#${a.post_id} - ${a.post_name}]`, e)
 			}

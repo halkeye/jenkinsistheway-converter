@@ -7,45 +7,13 @@ import https from 'https';
 import {promisify} from 'util';
 import Pluralize from 'pluralize';
 
-// from https://stackoverflow.com/a/2970667
-function keyize(str) {
-	return str.replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, function (match, index) {
-		if (+match === 0) return ""; // or if (/\s+/.test(match)) for white spaces
-		return index === 0 ? match.toLowerCase() : '_' + match.toLowerCase();
-	});
-}
-
-function dontIndent(str) {
-	return ('' + str).replace(/^[ \t]+/mg, '');
-}
-
-function escapeRegExp(string) {
-	return string
-		.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // $& means the whole matched string
-		.replace(/\s+/g, '\\s+');
-}
-
-function findNested(data, fn) {
-	for (const item of data) {
-		if (fn(item)) {
-			return item;
-		}
-		if (item.elements) {
-			const a = findNested(item.elements, fn)
-			if (a != null) {
-				return a;
-			}
-			continue;
-		}
-	}
-	return null;
-}
+import {keyize, dontIndent, escapeRegExp, findNested, convertAdocToMarkdown} from './utils.mjs';
 
 const finished = promisify(stream.finished);
 
-const rootDir = '../jenkins.io/content'
-const imagesDir = path.join(rootDir, 'images', 'jenkinsistheway')
-const contentDir = path.join(rootDir, 'jenkinsistheway')
+const rootDir = '../jenkins-is-the-way/src'
+const imagesDir = path.join(rootDir, 'images', 'user-story')
+const contentDir = path.join(rootDir, 'user-story')
 
 const data = await fs.readFile('./jenkinsistheway.json', 'utf8').then(str => JSON.parse(str));
 
@@ -86,6 +54,7 @@ for (const item of data.item) {
 	}
 
 	if (item.post_type === 'attachment') {
+		continue; // FIXME
 		const filename = path.join(imagesDir, path.basename(item.attachment_url));
 		await fs.mkdir(imagesDir, {recursive: true})
 		await downloadToFile(item.attachment_url, filename);
@@ -103,7 +72,7 @@ for (const item of data.item) {
 			items[itemKey] = {
 				...(items[itemKey] || {}),
 				location: item.frontmatter.location,
-				industry: item.frontmatter.industry,
+				industries: item.frontmatter.industry ? [item.frontmatter.industry] : [],
 				name: item.frontmatter.name.trim(),
 				latitude: item.frontmatter._wpgmp_metabox_latitude,
 				longitude: item.frontmatter._wpgmp_metabox_longitude,
@@ -115,15 +84,19 @@ for (const item of data.item) {
 		const images = new Set(item.adoc.match(/image:https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Zá0-9()]{1,6}\b([-a-záA-Z0-9()@:%_\+.~#?&//=]*)/g))
 		for (const image of Array.from(images)) {
 			await fs.mkdir(imagesDir, {recursive: true})
-			const filename = await downloadToFile(image.replace('image:', ''), path.join(imagesDir, path.basename(image.replace('image:', ''))));
-			item.adoc = item.adoc.replace(image, 'image:/images/jenkinsistheway/' + path.basename(filename));
+			try {
+				const filename = await downloadToFile(image.replace('image:', ''), path.join(imagesDir, path.basename(image.replace('image:', ''))));
+				item.adoc = item.adoc.replace(image, 'image:/images/user-story/' + path.basename(filename));
+			} catch (e) {
+				console.error(e);
+				continue;
+			}
 		}
 
 		const elementorData = JSON.parse(item.frontmatter._elementor_data);
 		const testimonal = findNested(elementorData, (item) => item.settings.testimonial_content);
 		items[itemKey] = {
 			...(items[itemKey] || {}),
-			layout: 'jenkinsistheway',
 			adoc: item.adoc,
 			title: item.title,
 			date: new Date(Date.parse(item.pubDate)).toISOString(),
@@ -164,7 +137,7 @@ for (const item of data.item) {
 				return false;
 			}
 
-			if (!items[itemKey].image && line.startsWith('image:/images/jenkinsistheway/')) {
+			if (!items[itemKey].image && line.startsWith('image:/images/user-story/')) {
 				items[itemKey].image = line.substring(6).trim().replace(/\[.*/, '')
 				return false;
 			}
@@ -233,7 +206,7 @@ for (const item of data.item) {
 		if (testimonal) {
 			const quoteRegex = new RegExp([
 				escapeRegExp(testimonal.settings.testimonial_content.replace(/<b>/g, '*').replace(/<\/b>/g, '*').trim()),
-				escapeRegExp("image:/images/jenkinsistheway/" + path.basename(testimonal.settings.testimonial_image.url).trim()),
+				escapeRegExp("image:/images/user-story/" + path.basename(testimonal.settings.testimonial_image.url).trim()),
 				"\\[image,width=[0-9]+,height=[0-9]+\\]",
 				escapeRegExp(testimonal.settings.testimonial_name.trim()),
 				escapeRegExp(testimonal.settings.testimonial_job.trim()),
@@ -243,10 +216,10 @@ for (const item of data.item) {
 			[.testimonal]
 			[quote, "${testimonal.settings.testimonial_name.trim()}"]
 			${testimonal.settings.testimonial_content.trim().replace(/<b>/g, '').replace(/<\/b>/g, '')}
-			image:/images/jenkinsistheway/${path.basename(testimonal.settings.testimonial_image.url)}[image,width=200,height=200]
+			image:/images/user-story/${path.basename(testimonal.settings.testimonial_image.url)}[image,width=200,height=200]
 			`) + "\n\n");
 
-			if (item.post_name === 'to-cast-magic-of-continuous-delivery') {
+			if (item.post_name === 'tymit') {
 				console.log(quoteRegex, items[itemKey]);
 			}
 		}
@@ -271,10 +244,9 @@ for (const staticImage of ['https://jenkinsistheway.io/wp-content/uploads/2020/0
 for (const [_, {adoc, ...item}] of Object.entries(items)) {
 	if (!adoc) {continue;}
 	await fs.mkdir(contentDir, {recursive: true})
-	const body = `---\n${YAML.dump(item)}---\n${adoc}`;
-	const filename = path.join(contentDir, item.post_name + '.adoc')
-	if (!adoc.trim().startsWith('==')) {
-		// console.log(filename, body);
-	}
+
+	const md = await convertAdocToMarkdown(adoc)
+	const body = `---\n${YAML.dump(item)}---\n${md}`;
+	const filename = path.join(contentDir, item.post_name + '.mdx')
 	await fs.writeFile(filename, body);
 }

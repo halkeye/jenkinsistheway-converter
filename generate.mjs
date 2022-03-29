@@ -256,7 +256,12 @@ for (const item of data.item) {
 	}
 }
 
-for (const staticImage of ['https://jenkinsistheway.io/wp-content/uploads/2020/04/Jenkins-is-the-Way-768x911.png']) {
+for (const staticImage of [
+	'https://jenkinsistheway.io/wp-content/uploads/2020/04/Jenkins-is-the-Way-768x911.png',
+	'https://jenkinsistheway.io/wp-content/uploads/2021/11/Screen-Shot-2021-11-18-at-10.18.48-AM.png',
+	'https://jenkinsistheway.io/wp-content/uploads/2021/09/jenkins_map_pin-180x180-1.png',
+	'https://jenkinsistheway.io/wp-content/uploads/2021/09/jenkins_map_pin2-e1634173081372.png',
+]) {
 	const filename = path.join(imagesDir, path.basename(staticImage));
 	await fs.mkdir(imagesDir, {recursive: true})
 	await downloadToFile(staticImage, filename);

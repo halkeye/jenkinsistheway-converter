@@ -70,6 +70,22 @@ export async function convertAdocToMarkdown(body) {
 	return spawnPromise(command, args, html);
 }
 
+export async function convertHtmlToMarkdown(body) {
+	const command = 'pandoc';
+	const args = [
+		'--wrap=none',
+		'-f',
+		'html',
+		'-t',
+		'markdown_strict',
+		'--atx-headers',
+		'-o',
+		'-',
+		'-',
+	];
+	return spawnPromise(command, args, body);
+}
+
 // borrowed from https://www.npmjs.com/package/spawn-promise but cleaned up
 async function spawnPromise(command, args, input) {
 	const exitCodes = {
@@ -122,4 +138,14 @@ async function spawnPromise(command, args, input) {
 	// Return
 	if (!isEmpty(errors)) throw new Error(JSON.stringify(errors));
 	return Buffer.concat(buffers);
+}
+
+
+export function cleanString(str) {
+	return str	
+			.replace(/[\u2014]/g, "--")        // emdash
+			.replace(/[\u2022]/g, "*")         // bullet
+			.replace(/[\u2018\u2019]/g, "'")   // smart single quotes
+			.replace(/[\u201C\u201D]/g, '"')   // smart double quotes
+			.replace(/[“|”]/g, '"');           // smart double quotes
 }

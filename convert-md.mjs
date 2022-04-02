@@ -69,6 +69,12 @@ for (const section of ['item']) {
 					.use(function () {
 						return (tree, _file) => {
 							return visitParents(tree, function (node, _ancestors) {
+								if (node.tagName === 'h1' || node.tagName === 'h2' || node.tagName === 'h3' || node.tagName === 'h4' || node.tagName === 'h5' || node.tagName === 'h6') {
+									// fix <h1><strong>foo</strong></h1> to just be <h1>foo</h1>
+									if (node.children?.[0]?.tagName == 'strong' || node.children?.[0]?.tagName == 'emphasis') {
+										node.children = node.children[0].children;
+									}
+								}
 								//const parent = ancestors[ancestors.length - 1];
 
 								//const isB = (node.tagName === 'b' || node.tagName === 'strong');

@@ -45,19 +45,38 @@ const FIELDS = {
 	'Teammates': {type: 'plural', section: 'metadata', key: 'team_members'},
 	'Team': {type: 'plural', section: 'metadata'},
 	'Plugin': {type: 'plural', section: 'metadata'},
+}
 
-	'Background': {type: 'singular', section: 'body'},
-	'Goals': {type: 'singular', section: 'body'},
-	'Solution & Results': {type: 'singular', section: 'body', key: 'solution'},
-	'Solution and Results': {type: 'singular', section: 'body', key: 'solution'},
-	'Solution': {type: 'singular', section: 'body', key: 'solution'},
-	'References': {type: 'singular', section: 'body'},
-	'Results': {type: 'singular', section: 'body'},
-	'Challenge': {type: 'singular', section: 'body'},
-	// FIXME - should get merged into existing section - solution
-	// if section already exists, merge header and body and append
-	'Lab Book': {type: 'singular', section: 'body'},
-	'Deployer': {type: 'singular', section: 'body'},
+const FIELD_REPLACEMENT = {
+	"Project URL": "Project Website",
+	"Project website": "Project Website",
+	"Project": "Project Website",
+	"Program URL": "Project Website",
+
+	"KP Labs Team": "Team Members",
+	"Arm Teammates": "Team Members",
+	"IAM Robotics Team": "Team Members",
+	"Team": "Team Members",
+	"Team members": "Team Members",
+	"Team Member": "Team Members",
+	"Graylog team members": "Team Members",
+	"Telstra Team": "Team Members",
+	"Camunda Team Members": "Team Members",
+	"Moogsoft Team": "Team Members",
+
+	"Build Tools": "Build Tool",
+
+	"Version Control": "Version Control System",
+
+	"Project funding": "Project Funding",
+	"Funding": "Project Funding",
+	"Funded by": "Project Funding",
+
+	"Goal": "Goals",
+
+	"RESULTS": "Results",
+
+	"Progamming Language": "Programming Language",
 }
 
 async function retrieveImages(story) {
@@ -172,7 +191,10 @@ for (const item of posts.filter(item => !maps.includes(item) && !caseStudies.inc
 	const story = {
 		...(items[itemKey] || {}),
 		metadata: {},
-		body: {},
+		body: {
+			title: null,
+			paragraphs: [],
+		},
 		tmp: {
 			downloads: [],
 			md: item.md,
@@ -453,96 +475,86 @@ for (const item of posts.filter(item => !maps.includes(item) && !caseStudies.inc
 		''
 	)
 
-	const remainders = await remark()
+	// to-happy-developers
+	story.tmp.md = story.tmp.md.replace(
+		'***Programming Language:* **C/C++, Python ***Platform****:* Robotic embedded hardware, Linux**',
+		dontIndent(`
+		**Programming Language:** C/C++, Python
+
+		**Platform**: Robotic embedded hardware, Linux
+		`))
+
+	// to-add-stability-to-the-overall-software-delivery-process
+	story.tmp.md = story.tmp.md.replace(
+		'***Programming Language:* **Java ***Platform****:* Linux**',
+		dontIndent(`
+		**Programming Language:**	Java
+
+		**Platform**: Linux
+		`))
+
+	await remark()
 		.use(function () {
 			return (tree, _file) => {
-				tree.children = tree.children.filter(child => {
-					if (child.type === 'heading') {
-						const line = toMarkdown({type: 'paragraph', children: child.children}, {emphasis: ''}).replaceAll('&#x20;', '').trim();
-						if (child.depth == 1) {
-							story.body.sub_title = line
-							return false;
-						}
-						if (!story.tag_line && (child.depth == 4 || child.depth == 3)) {
-							story.tag_line = line.replace(/^\*+(.*?)\*+$/, '$1') // FIXME maybe handle two stars?
-							return false;
-						}
-						if (!story.submitted_by && line.toLowerCase().includes('submitted by jenkins user')) {
-							story.submitted_by = line.replace(/^\*+(.*?)\*+$/, '$1').substring('Submitted By Jenkins User'.length).trim()
-							return false;
-						}
-					}
-					return true;
-				});
-
-				if (story.post_name == 'tymit') {
-					console.log(story.tmp.md);
-					die();
-				}
-
 				const nodesToRemove = [];
-				let lastHeader = '';
 
 				for (let i = 0; i < tree.children.length; i++) {
 					let child = tree.children[i];
-					if (child.type === 'paragraph') {
-						const fieldReplacements = {
-							"Project URL": "Project Website",
-							"Project website": "Project Website",
-							"Project": "Project Website",
-							"Program URL": "Project Website",
 
-							"KP Labs Team": "Team Members",
-							"Arm Teammates": "Team Members",
-							"IAM Robotics Team": "Team Members",
-							"Team": "Team Members",
-							"Team members": "Team Members",
-							"Team Member": "Team Members",
-							"Graylog team members": "Team Members",
-							"Telstra Team": "Team Members",
-							"Camunda Team Members": "Team Members",
-							"Moogsoft Team": "Team Members",
+					if (child.type === 'heading') {
+						const line = toMarkdown({type: 'paragraph', children: child.children})
+							.replace(/\*+(.*?)\*+/g, '$1')
+							.replaceAll('&#x20;', '')
+							.trim();
 
-							"Build Tools": "Build Tool",
-
-							"Version Control": "Version Control System",
-
-							"Project funding": "Project Funding",
-							"Funding": "Project Funding",
-							"Funded by": "Project Funding",
-
-							"Goal": "Goals",
-
-							"RESULTS": "Results",
+						if (!story.title) {
+							story.title = line
+							nodesToRemove.push(child);
+							continue;
 						}
 
+						if (!story.submitted_by && line.toLowerCase().includes('submitted by jenkins user')) {
+							story.submitted_by = line.replace(/\*+(.*?)\*+/g, '$1').substring('Submitted By Jenkins User'.length).trim()
+							nodesToRemove.push(child);
+							continue;
+						}
 
+						if (!story.tag_line) {
+							story.tag_line = line
+							nodesToRemove.push(child);
+							continue;
+						}
+
+						if (!story.metadata.title) {
+							story.metadata.title = line
+							nodesToRemove.push(child);
+							continue;
+						}
+
+						if (!story.body.title) {
+							// no titles left, so store the body title, and then store the rest
+							story.body.title = line.replace(/\*+(.*?)\*+/g, '$1') // FIXME maybe handle two stars?
+							nodesToRemove.push(child);
+							break;
+						}
+					}
+
+					if (child.type === 'paragraph') {
 						if (child.children[0].type === 'strong') {
 							// key value pair
-							let header = child?.children[0]?.children[0]?.value?.trim()?.replace(/:$/, '')?.trim() || lastHeader;
+							let header = child?.children[0]?.children[0]?.value?.trim()?.replace(/:$/, '')?.trim();
 							if (!header) {
-								console.log(child.children[0].children);
+								console.log(story.post_name, toMarkdown(child.children[0]))
 								die();
 							}
-							if (fieldReplacements[header]) {
-								header = fieldReplacements[header];
+							if (FIELD_REPLACEMENT[header]) {
+								header = FIELD_REPLACEMENT[header];
 							}
 
 							let line = toMarkdown({type: 'paragraph', children: child.children.slice(1)}, {emphasis: '', strong: ''})
 
 							if (!FIELDS[header]) {
-								if (lastHeader) {
-									header = lastHeader;
-								} else {
-									continue;
-								}
-							}
-							lastHeader = header;
-							// probably a continuation
-							while (tree.children[i + 1] && tree.children[i + 1].children && tree.children[i + 1].children[0]?.type !== 'strong') {
-								line = line + toMarkdown(tree.children[i + 1]).trim();
-								nodesToRemove.push(tree.children[i + 1]);
-								i++;
+								break; // no more headers, we are done
 							}
 
 							line = line.trim().replaceAll('&#x20;', ' ').replace(/^\*+(.*?)\*+$/, '$1').trim();
@@ -552,11 +564,6 @@ for (const item of posts.filter(item => !maps.includes(item) && !caseStudies.inc
 								const key = field.key || keyize(header);
 								if (story[field.section][key] && story[field.section][key].trim() == line.trim()) {
 									// duplicated line, just throw it away
-									nodesToRemove.push(child);
-									continue;
-								} else if (story[field.section][key]) {
-									// it already has that section, so appened it
-									story[field.section][key] = story[field.section][key] + '\n' + line
 									nodesToRemove.push(child);
 									continue;
 								} else {
@@ -576,17 +583,20 @@ for (const item of posts.filter(item => !maps.includes(item) && !caseStudies.inc
 						}
 					}
 				}
+
 				tree.children = tree.children.filter(child => !nodesToRemove.includes(child))
+
+				const remainingHeaders = tree.children.filter(i => i.type === 'header');
+				if (remainingHeaders?.length) {
+					console.log(remainingHeaders)
+					process.exit(1);
+				}
+
+				// whatever else is a paragraph
+				story.body.paragraphs = tree.children.map(child => toMarkdown(child).trim());
 			}
 		}).process(story.tmp.md);
 
-	story.tmp.md = String(remainders)
-	if (story.tmp.md) {
-		console.log(story);
-		process.exit(1)
-	}
-//}
-//for (const [itemKey, story] of Object.entries(items)) {
 	if (!story.post_name) {
 		console.log('missing post_name', itemKey, story);
 		continue;

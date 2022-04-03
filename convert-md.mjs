@@ -1,12 +1,14 @@
 import {Parser} from 'xml2js';
 import {unserialize} from 'php-serialize'
 import fs from 'fs/promises';
-import {rehype} from 'rehype'
-import rehypeFormat from 'rehype-format'
-import {visitParents} from 'unist-util-visit-parents';
-import {toHtml} from 'hast-util-to-html'
 
-import {convertHtmlToMarkdown} from './utils.mjs';
+import {unified} from 'unified'
+import rehypeParse from 'rehype-parse'
+import rehypeRemark from 'rehype-remark';
+import rehypeFormat from 'rehype-format'
+import remarkStringify from 'remark-stringify'
+
+import {rehypeFixBoldSpaces, rehypeStripImage, rehypeFixHeaders, rehypeRemoveEmpty, rehypeStripNBSP} from './utils.mjs';
 
 const parser = new Parser();
 const xml = await parser.parseStringPromise(
@@ -65,67 +67,23 @@ for (const section of ['item']) {
 		}
 		if (a['content:encoded']) {
 			try {
-				const newContent = await rehype()
-					.use(function () {
-						return (tree, _file) => {
-							return visitParents(tree, function (node, _ancestors) {
-								if (node.tagName === 'h1' || node.tagName === 'h2' || node.tagName === 'h3' || node.tagName === 'h4' || node.tagName === 'h5' || node.tagName === 'h6') {
-									// fix <h1><strong>foo</strong></h1> to just be <h1>foo</h1>
-									if (node.children?.[0]?.tagName == 'strong' || node.children?.[0]?.tagName == 'emphasis') {
-										node.children = node.children[0].children;
-									}
-								}
-								//const parent = ancestors[ancestors.length - 1];
-
-								//const isB = (node.tagName === 'b' || node.tagName === 'strong');
-								//const hasChildren = !!node.children;
-								//if (isB && hasChildren) {
-								//  const sibling = parent.children[parent.children.indexOf(node) + 1];
-
-								//  // if we have the : in the text, move it to the bold
-								//  if (sibling?.value?.trim()?.startsWith(':')) {
-								//    sibling.value = ' ' + sibling.value.trim().replace(/^:/, '').trim();
-								//    node.children[0].value = node.children[0].value.trim() + ':';
-								//  }
-
-								//  const textBody = node.children.filter(child => child.value).find(child => child.value.trim().endsWith(':'));
-								//  console.log('parent.before', toHtml(parent));
-								//  if (textBody) {
-								//    textBody.value = textBody.value.trim();
-								//    visitParents([{tagName: 'something', children: [sibling]}], 'text', function (child) {
-								//      console.log(child)
-								//      [> Remove double spaces <]
-								//      child.value = ' ' + child.value.trim();
-								//    });
-								//  }
-								//}
-								if (node.tagName === 'img') {
-									if (node.properties) {
-										node.properties = {
-											alt: node.properties.alt,
-											src: node.properties.src,
-										}
-									} else {
-										console.log('no properties', node);
-									}
-								}
-								return node;
-							})
-						}
-					})
+				const newContent = await unified()
+					.use(rehypeParse)
+					.use(rehypeRemoveEmpty)
+					.use(rehypeFixBoldSpaces)
+					.use(rehypeStripImage)
+					.use(rehypeFixHeaders)
+					.use(rehypeStripNBSP)
 					.use(rehypeFormat)
+					.use(rehypeRemark)
+					.use(remarkStringify)
 					.process(a['content:encoded'])
 
-				let html = String(newContent)
-					.replace(/:\s+<\/b>\s*\b/g, ':</b> ')
-					.replace(/<\/b>\s\s+/g, '</b> ')
-					.replace(/:\s+<\/strong>\s*\b/g, ':</strong> ')
-					.replace(/<\/strong>\s\s+/g, '</strong> ')
-				//console.log(html);
-				a.md = await convertHtmlToMarkdown(html)
-					.then(md => md.toString('utf8').trim())
-					.then(md => md.replace(/^\*\*([^\*]+)\*\*: \b/gm, '**$1:** '))
-				//console.log(String(newContent), a.md)
+				a.md = String(newContent).trim()
+				if (a.post_name === 'to-accelerate-automation-in-the-cloud') {
+					console.log(a['content:encoded'])
+					console.log(a.md);
+				}
 			} catch (e) {
 				console.log(`error processing [#${a.post_id} - ${a.post_name}]`, e)
 			}

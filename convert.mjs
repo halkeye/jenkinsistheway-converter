@@ -57,7 +57,7 @@ for (const section of ['item']) {
 		}
 		if (a['content:encoded']) {
 			try {
-				a.adoc = await convertHtmlToAdoc(a['content:encoded']);
+				a.adoc = await convertHtmlToAdoc(a['content:encoded']).then(md => md.toString('utf8').trim());
 			} catch (e) {
 				console.log(`error processing [#${a.post_id} - ${a.post_name}]`, e)
 			}

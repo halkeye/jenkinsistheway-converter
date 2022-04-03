@@ -1,4 +1,5 @@
 import YAML from 'js-yaml';
+import YAML2 from 'yaml';
 
 import stream from 'stream';
 import fs from 'fs/promises'
@@ -7,9 +8,7 @@ import https from 'https';
 import {promisify} from 'util';
 import Pluralize from 'pluralize';
 
-import {keyize, dontIndent, escapeRegExp, findNested, convertAdocToMarkdown} from './utils.mjs';
-
-const QUOTE_MARKER = 'QUOTEQUOTEQUOTEQUOTEETOUQ'
+import {keyize, escapeRegExp, findNested, convertAdocToMarkdown} from './utils.mjs';
 
 const finished = promisify(stream.finished);
 
@@ -56,10 +55,6 @@ for (const item of data.item) {
 	}
 
 	if (item.post_type === 'attachment') {
-		continue; // FIXME
-		const filename = path.join(imagesDir, path.basename(item.attachment_url));
-		await fs.mkdir(imagesDir, {recursive: true})
-		await downloadToFile(item.attachment_url, filename);
 		continue;
 	}
 	if (item.post_type === 'post') {
@@ -73,11 +68,13 @@ for (const item of data.item) {
 			const itemKey = item.frontmatter['story link'].replace('https://jenkinsistheway.io/user-story/', '').replace(/\/$/, '')
 			items[itemKey] = {
 				...(items[itemKey] || {}),
-				location: item.frontmatter.location,
-				industries: item.frontmatter.industry ? [item.frontmatter.industry] : [],
-				name: item.frontmatter.name.trim(),
-				latitude: item.frontmatter._wpgmp_metabox_latitude,
-				longitude: item.frontmatter._wpgmp_metabox_longitude,
+				map: {
+					location: item.frontmatter.location,
+					industries: item.frontmatter.industry ? [item.frontmatter.industry] : [],
+					name: item.frontmatter.name.trim(),
+					latitude: item.frontmatter._wpgmp_metabox_latitude,
+					longitude: item.frontmatter._wpgmp_metabox_longitude,
+				}
 			}
 			continue;
 		}
@@ -96,6 +93,7 @@ for (const item of data.item) {
 				continue;
 			}
 		}
+		item.adoc = item.adoc.split('\n').map(line => line.replace(/^\s*TIME Center CI\/CD solution\s*$/, '== TIME Center CI/CD solution')).join('\n')
 
 		//if (item.post_name.trim() === 'tymit') {
 		//  console.log(item.adoc);
@@ -105,27 +103,31 @@ for (const item of data.item) {
 		const testimonal = findNested(elementorData, (item) => item.settings.testimonial_content);
 		items[itemKey] = {
 			...(items[itemKey] || {}),
-			adoc: item.adoc,
+			metadata: {},
+			body: {},
+			tmp: {
+				adoc: item.adoc,
+			},
 			title: item.title,
 			date: new Date(Date.parse(item.pubDate)).toISOString(),
 			post_name: item.post_name.trim(),
 		};
 
-		items[itemKey].adoc = items[itemKey].adoc.replace(/\n\*Results:\s+\*/, '\n*Results:*')
+		items[itemKey].tmp.adoc = items[itemKey].tmp.adoc.replace(/\n\*Results:\s+\*/, '\n*Results:*')
 
 		// Fix a single "Program URL:" line which had an extra forced line break
 		// post_name == 'to-space'
-		items[itemKey].adoc = items[itemKey].adoc.replace(/\S*\+\n\n/, '\n\n');
+		items[itemKey].tmp.adoc = items[itemKey].tmp.adoc.replace(/\S*\+\n\n/, '\n\n');
 
 		// fix a random new line in to-cook-almost-everything-in-devops-world
-		items[itemKey].adoc = items[itemKey].adoc.replace(/,\s*Spoke with colleagues and peers/, ', Spoke with colleagues and peers')
+		items[itemKey].tmp.adoc = items[itemKey].tmp.adoc.replace(/,\s*Spoke with colleagues and peers/, ', Spoke with colleagues and peers')
 
 		// fix a random new line in to-truly-automate-everything
-		items[itemKey].adoc = items[itemKey].adoc.replace(/Kubernetes,\s*Linux/, 'Kubernetes, Linux')
+		items[itemKey].tmp.adoc = items[itemKey].tmp.adoc.replace(/Kubernetes,\s*Linux/, 'Kubernetes, Linux')
 
 
 		let weAreDone = false;
-		items[itemKey].adoc = items[itemKey].adoc.replace(/\+\n/, '').split("\n").filter(line => {
+		items[itemKey].tmp.adoc = items[itemKey].tmp.adoc.replace(/\+\n/, '').split("\n").filter(line => {
 			if (weAreDone) {
 				// keep the remaining lines
 				return true;
@@ -133,8 +135,13 @@ for (const item of data.item) {
 
 			let noFormattingLine = line.replace(/\*/g, '').replace(/_/g, '');
 
-			if (!items[itemKey].sub_title && line.startsWith('== ')) {
-				items[itemKey].sub_title = line.substring(3).trim();
+			if (!items[itemKey].body.sub_title && line.startsWith('== ')) {
+				items[itemKey].body.sub_title = line.substring(3).trim();
+				return false;
+			}
+
+			if (!items[itemKey].metadata.sub_title && line.startsWith('== ')) {
+				items[itemKey].metadata.sub_title = line.substring(3).trim();
 				return false;
 			}
 
@@ -183,8 +190,29 @@ for (const item of data.item) {
 				"Funding": "Project Funding",
 				"Funded by": "Project Funding",
 			}
-			const singularFields = ['Organization', 'Company', 'Company website', 'Project Website', 'Summary', "Project Funding", "Funded By"]
-			const pluralFields = ['Industry', 'Programming Language', 'Platform', 'Version Control System', 'Build Tool', 'Community Support', 'Team Members', 'Team', 'Plugin']
+
+			const fields = {
+				'Organization': {type: 'singular', section: 'metadata'},
+				'Company': {type: 'singular', section: 'metadata'},
+				'Company website': {type: 'singular', section: 'metadata'},
+				'Project Website': {type: 'singular', section: 'metadata'},
+				'Summary': {type: 'singular', section: 'metadata'},
+				'Project Funding': {type: 'singular', section: 'metadata'},
+				'Funded By': {type: 'singular', section: 'metadata'},
+				'Industry': {type: 'plural', section: 'metadata'},
+				'Programming Language': {type: 'plural', section: 'metadata'},
+				'Platform': {type: 'plural', section: 'metadata'},
+				'Version Control System': {type: 'plural', section: 'metadata'},
+				'Build Tool': {type: 'plural', section: 'metadata'},
+				'Community Support': {type: 'plural', section: 'metadata'},
+				'Team Members': {type: 'plural', section: 'metadata'},
+				'Team': {type: 'plural', section: 'metadata'},
+				'Plugin': {type: 'plural', section: 'metadata'},
+
+				'Background': {type: 'singular', section: 'body'},
+				'Goals': {type: 'singular', section: 'body'},
+				//'Solution & Results': {type: 'singular', section: 'body'},
+			}
 
 
 			let [header, ...remainder] = noFormattingLine.trim().split(':')
@@ -194,20 +222,21 @@ for (const item of data.item) {
 				header = fieldReplacements[header];
 			}
 
-			if (singularFields.includes(header)) {
-				const key = keyize(header);
-				if (!items[itemKey][key]) {
-					items[itemKey][key] = remainder
-					return false;
-				}
-			}
-
-			if (pluralFields.includes(header)) {
-				const key = keyize(Pluralize(header));
-				const results = remainder.split(remainder.includes(';') ? ';' : ',').map(str => str.trim()).filter(Boolean)
-				if (!items[itemKey][key]) {
-					items[itemKey][key] = results
-					return false;
+			if (fields[header]) {
+				const field = fields[header];
+				if (field.type === 'singular') {
+					const key = keyize(header);
+					if (!items[itemKey][field.section][key]) {
+						items[itemKey][field.section][key] = remainder
+						return false;
+					}
+				} else if (field.type === 'plural') {
+					const key = keyize(Pluralize(header));
+					const results = remainder.split(remainder.includes(';') ? ';' : ',').map(str => str.trim()).filter(Boolean)
+					if (!items[itemKey][field.section][key]) {
+						items[itemKey][field.section][key] = results
+						return false;
+					}
 				}
 			}
 
@@ -225,34 +254,30 @@ for (const item of data.item) {
 
 			items[itemKey].quotes = [{
 				from: testimonal.settings.testimonial_name.trim(),
-				content: testimonal.settings.testimonial_content.trim().replace(/<b>/g, '').replace(/<\/b>/g, '').replace('“', '"').replace('”', '"'),
+				content: testimonal.settings.testimonial_content.trim().replace(/<b>/g, '').replace(/<\/b>/g, '').replace(/“/g, '"').replace(/”/g, '"').replace(/"/g, ''),
 				image: path.basename(testimonal.settings.testimonial_image.url),
 			}]
 
-			items[itemKey].adoc = items[itemKey].adoc.replace(quoteRegex, `\n\n${QUOTE_MARKER}\n\n`);
+			items[itemKey].tmp.adoc = items[itemKey].tmp.adoc.replace(quoteRegex, '');
 		}
 
-		items[itemKey].adoc = items[itemKey].adoc
+		items[itemKey].tmp.adoc = items[itemKey].tmp.adoc
 			.replace(/[\u2014]/g, "--")        // emdash
 			.replace(/[\u2022]/g, "*")         // bullet
 			.replace(/[\u2018\u2019]/g, "'")   // smart single quotes
 			.replace(/[\u201C\u201D]/g, '"');  // smart double quotes
 
-		items[itemKey].adoc = items[itemKey].adoc.split('\n').map(line => line.replace(/^\s*TIME Center CI\/CD solution\s*$/, '== TIME Center CI/CD solution')).join('\n')
+		items[itemKey].body.remaining = await convertAdocToMarkdown(items[itemKey].tmp.adoc).then(md => md.toString('utf8').trim());
 
-		let counter = 0;
-		items[itemKey].md = await convertAdocToMarkdown(items[itemKey].adoc).then(md => md.toString('utf8')).then(
-			md => md.replace(QUOTE_MARKER, () => `<Testimonal idx="0" />`)
-		).then(
-			md => md.replace(/<span class="image">(.*)<\/span>/g, '$1')
-		)
-
-		items[itemKey].adoc = items[itemKey].adoc.replace(QUOTE_MARKER, () => dontIndent(`
-			[.testimonal]
-			[quote, "${items[itemKey].quotes[0].from}"]
-			${items[itemKey].quotes[0].content}
-			image:./${items[itemKey].quotes[0].image}[image,width=200,height=200]
-		`));
+		for (const section of ['body', 'metadata']) {
+			for (const [key, val] of Object.entries(items[itemKey][section])) {
+				if (Array.isArray(val)) {
+					items[itemKey][section][key] = await Promise.all(val.map(str => convertAdocToMarkdown(str).then(md => md.toString('utf8').trim())))
+				} else {
+					items[itemKey][section][key] = await convertAdocToMarkdown(val).then(md => md.toString('utf8').trim());
+				}
+			}
+		}
 	}
 }
 
@@ -267,11 +292,17 @@ for (const staticImage of [
 	await downloadToFile(staticImage, filename);
 }
 
-for (const [_, {md, adoc, ...item}] of Object.entries(items)) {
-	if (!md) {continue;}
+for (const item of Object.values(items)) {
+	if (!item.post_name) {
+		console.log('missing post_name', item);
+		continue;
+	}
+	if (!item.body) {
+		console.log('missing', item);
+		continue;
+	}
 	await fs.mkdir(contentDir, {recursive: true})
-
-	const body = `---\n${YAML.dump(item)}---\n${md}`;
-	const filename = path.join(contentDir, item.post_name, 'index.mdx')
-	await fs.writeFile(filename, body);
+	const filename = path.join(contentDir, item.post_name, 'index.yaml')
+	delete item.tmp;
+	await fs.writeFile(filename, YAML2.stringify(item));
 }
